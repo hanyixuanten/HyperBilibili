@@ -18,11 +18,33 @@ const htmlEntities: { [key: string]: string } = {
     // 可以在这里扩展其他常用的 HTML 实体
 };
 
-// 处理转义符，将 &nbsp; 等转义符转换为对应的字符
-function decodeEntities(text: string): string {
-    return text.replace(/&([^;]+);/g, (match, entity) => {
-        return htmlEntities[entity] || match; // 如果实体存在，则替换；否则保留原样
+// 处理 HTML 实体，将评论或文章接口返回的转义符还原为可显示字符。
+// 同时支持十进制和十六进制数字实体，避免只处理少数几个命名实体。
+export function decodeHtmlEntities(text: string): string {
+    return text.replace(/&(#(?:x[0-9a-f]+|\d+)|[a-z][a-z0-9]+);/gi, (match, entity) => {
+        if (entity.charAt(0) === '#') {
+            const isHex = entity.charAt(1).toLowerCase() === 'x';
+            const codePoint = parseInt(entity.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+            if (!isNaN(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff) {
+                // String.fromCodePoint 在部分 QuickApp 运行时不可用，手动处理代理项。
+                if (codePoint <= 0xffff) {
+                    return String.fromCharCode(codePoint);
+                }
+                const offset = codePoint - 0x10000;
+                return String.fromCharCode(
+                    0xd800 + (offset >> 10),
+                    0xdc00 + (offset & 0x3ff)
+                );
+            }
+            return match;
+        }
+
+        return htmlEntities[entity.toLowerCase()] || match;
     });
+}
+
+function decodeEntities(text: string): string {
+    return decodeHtmlEntities(text);
 }
 
 // 移除 HTML 标签，保留纯文本
